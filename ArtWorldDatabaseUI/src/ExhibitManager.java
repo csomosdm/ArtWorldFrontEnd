@@ -6,11 +6,11 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.awt.Dimension;
-
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 
 public class ExhibitManager {
 	private ArtWorldConnect awc;
@@ -149,11 +149,7 @@ public class ExhibitManager {
 				while (rs.next()) {
 					iD = rs.getInt(1);
 				}
-				JPanel panel = frame.getResultPanel();
-				panel.removeAll();
-				JLabel temp = new JLabel("Created Exhibit Named " + exhibitName + " with ID " + iD);
-				temp.setFont(UIFrame.ERRORFONT);
-				panel.add(temp);
+				frame.createSuccessMessage("Created Exhibit Named " + exhibitName + " with ID " + iD);
 			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
@@ -199,7 +195,11 @@ public class ExhibitManager {
 			while (rs.next()) {
 				for(int i = 0; i < 4; i++) {
 					if (i >= 2) {
-						temp[i] = rs.getDate(i + 1).toString();
+						if (rs.getDate(i + 1) == null) {
+							temp[i] = "Ongoing";
+						} else {
+							temp[i] = rs.getDate(i + 1).toString();
+						}
 					} else if (i == 0) {
 						temp[i] = String.valueOf(rs.getInt(i + 1));
 					} else {
@@ -230,37 +230,124 @@ public class ExhibitManager {
 		rp.add(scrollPane);
 	}
 
-	public void updateExhibit(String exhibitID, String name, String startDate, String endDate, Object museumID) {
+	public void updateExhibit(String exhibitID, String name, String startDate, String endDate, String museumID, String username) {
 		if (exhibitID.length() == 0) {
-			frame.createErrorMessage("ExhibitID can not be left empty");
+			frame.createErrorMessage("Exhibit ID is required.");
 			return;
+		} else {
+			try {
+				Integer.parseInt(exhibitID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Exhibit ID must be a positive integer which corresponds to an exhisting exhibit.");
+				return;
+			}
 		}
 		if (name.length() == 0) {
-			name = null;
+			frame.createErrorMessage("Exhibit Name is required.");
+			return;
 		}
-		if (startDate.length() == 0) {
-			startDate = null;
-		} if (endDate.length() == 0) {
-			endDate = null;
-		}
-		System.out.println("exhibitID: " + exhibitID + ", Name: " + name + ", startDate: " + startDate + ", endDate: " + endDate + "museumID: " + museumID);
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
+			if (startDate.length() == 0) {
+				frame.createErrorMessage("Start Date is required.");
+				return;
+			} else {
+				Date.valueOf(startDate);
+			}
+			if (endDate.length() == 0) {
+				endDate = null;
+			} else {
+				Date.valueOf(endDate);
+			}
+		} catch (IllegalArgumentException e){
+			frame.createErrorMessage("Exhibit Start and End Date must follow the yyyy-mm-dd format.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call update_exhibit(?,?,?,?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(exhibitID));
+			cs.setString(3, name);
+			cs.setDate(4, Date.valueOf(startDate));
+			if (endDate == null) {
+				cs.setNull(5, Types.DATE);
+			} else {
+				cs.setDate(5, Date.valueOf(endDate));
+			}
+			cs.setInt(6, Integer.parseInt(museumID));
+			cs.setString(7, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Exhibit with ID " + exhibitID + " and Name " + name + " was successfully updated.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
 		}
 	}
 
-	public void deleteExhibit(String exhibitID, String name, Object museumID) {
+	public void deleteExhibit(String exhibitID, String name, String  username) {
 		if (exhibitID.length() == 0 || name.length() == 0) {
-			frame.createErrorMessage("ExhibitID and Exhibit Name are required");
+			frame.createErrorMessage("ExhibitID and Exhibit Name are required.");
 			return;
 		}
-		System.out.println("exhibitID: " + exhibitID + ", Name: " + name + ", museumID: " + museumID);
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
+			Integer.parseInt(exhibitID);
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("exhibitID must be a positive integer.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call delete_exhibit(?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(exhibitID));
+			cs.setString(3, name);
+			cs.setString(4, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Exhibit with the name " + name + " was successfully deleted.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	public void fillDefaults(String exhibitID, String username) {
+		if (exhibitID.length() == 0) {
+			frame.createErrorMessage("Exhibit ID is required.");
+			return;
+		}
+		try {
+			Integer.parseInt(exhibitID);
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("Exhibit ID must be a positive integer.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call getExhibitValues(?,?)}");
+			cs.setInt(1, Integer.parseInt(exhibitID));
+			cs.setString(2, username);
+			ResultSet rs = cs.executeQuery();
+			this.fillDefaultsHelper(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	private void fillDefaultsHelper(ResultSet rs) {
+		JTextField[] fields = frame.getTextFields();
+		try {
+			rs.next();
+			fields[1].setText(rs.getString(1).trim());
+			fields[2].setText(rs.getDate(2).toString());
+			if (rs.getDate(3) == null) {
+				fields[3].setText("");
+			} else {
+				fields[3].setText(rs.getDate(3).toString());
+			}
+			fields[4].setText(Integer.toString(rs.getInt(4)));
+		} catch (SQLException e) {
+			e.printStackTrace();
 		}
 	}
 

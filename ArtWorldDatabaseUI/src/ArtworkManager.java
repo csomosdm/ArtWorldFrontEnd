@@ -12,6 +12,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 
 public class ArtworkManager {
 	private ArtWorldConnect awc;
@@ -155,11 +156,7 @@ public class ArtworkManager {
 				while (rs.next()) {
 					iD = rs.getInt(1);
 				}
-				JPanel panel = frame.getResultPanel();
-				panel.removeAll();
-				JLabel temp = new JLabel("Created Artwork Titled " + artworkName + " with ID " + iD);
-				temp.setFont(UIFrame.ERRORFONT);
-				panel.add(temp);
+				frame.createSuccessMessage("Created Artwork Titled " + artworkName + " with ID " + iD);
 			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
@@ -243,13 +240,21 @@ public class ArtworkManager {
 		rp.add(scrollPane);		
 	}
 
-	public void updateArtwork(String artworkID, String artworkName, String artworkMedium, String artworkCategory, String artistID, Object museumID) {
+	public void updateArtwork(String artworkID, String artworkName, String artworkMedium, String artworkCategory, String artistID, String museumID, String username) {
 		if (artworkID.length() == 0) {
-			frame.createErrorMessage("Artwork ID can not be left empty");
+			frame.createErrorMessage("Artwork ID is required.");
 			return;
+		} else {
+			try {
+				Integer.parseInt(artworkID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Artwork ID must be a positive integer which corresponds to an exhisting artwork.");
+				return;
+			}
 		}
 		if (artworkName.length() == 0) {
-			artworkName = null;
+			frame.createErrorMessage("Artwork Name is required.");
+			return;
 		}
 		if (artworkMedium.length() == 0) {
 			artworkMedium = null;
@@ -259,35 +264,114 @@ public class ArtworkManager {
 		}
 		if (artistID.length() == 0) {
 			artistID = null;
+		} else {
+			try {
+				Integer.parseInt(artistID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Artist ID must be a positive integer which corresponds to an exhisting artist.");
+				return;
+			}
+		}
+		if (museumID.length() == 0) {
+			frame.createErrorMessage("Museum ID is required.");
+			return;
+		} else {
+			try {
+				Integer.parseInt(museumID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Museum ID must be a positive integer which corresponds to an exhisting museum.");
+				return;
+			}
 		}
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{call update_artwork(?,?,?,?,?)}");
-			cs.setInt(1, Integer.parseInt(artworkID));
-			cs.setString(2, artworkName);
-			cs.setString(3, artworkMedium);
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call update_artwork(?,?,?,?,?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(artworkID));
+			cs.setString(3, artworkName);
+			cs.setString(4, artworkMedium);
+			cs.setString(5, artworkCategory);
 			if (artistID == null) {
-				cs.setNull(4, Types.INTEGER);
+				cs.setNull(6, Types.INTEGER);
 			} else {
-				cs.setInt(4, Integer.parseInt(artistID));
+				cs.setInt(6, Integer.parseInt(artistID));
 			}
-			cs.setInt(5, (int) museumID);
+			cs.setInt(7, Integer.parseInt(museumID));
+			cs.setString(8, username);
 			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Artwork with ID " + artworkID + " and name " + artworkName + " was successfully updated.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
+			e.getStackTrace();
 		}
 	}
 
-	public void deleteArtwork(String artworkID, String name, Object museumID) {
+	public void deleteArtwork(String artworkID, String name, String username) {
 		if (artworkID.length() == 0 || name.length() == 0) {
-			frame.createErrorMessage("ArtworkID and Artwork Name are required");
+			frame.createErrorMessage("ArtworkID and Artwork Name are required.");
 			return;
 		}
-		System.out.println("artworkID: " + artworkID + ", Name: " + name + ", museumID: " + museumID);
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
+			Integer.parseInt(artworkID);
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("ArtworkID must be a positive integer.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call delete_artwork(?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(artworkID));
+			cs.setString(3, name);
+			cs.setString(4, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Artwork with the name " + name + " was successfully deleted.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
 		}
 	}
 
+	public void fillDefaults(String artworkID, String username) {
+		if (artworkID.length() == 0) {
+			frame.createErrorMessage("ArtworkID is required.");
+			return;
+		}
+		try {
+			Integer.parseInt(artworkID);
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("ArtworkID must be a positive integer.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call getArtworkValues(?,?)}");
+			cs.setInt(1, Integer.parseInt(artworkID));
+			cs.setString(2, username);
+			ResultSet rs = cs.executeQuery();
+			this.fillDefaultsHelper(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	private void fillDefaultsHelper(ResultSet rs) {
+		JTextField[] fields = frame.getTextFields();
+		try {
+			rs.next();
+			fields[1].setText(rs.getString(1).trim());
+			fields[2].setText(rs.getString(2).trim());
+			fields[3].setText(rs.getString(3).trim());
+			if (rs.getInt(4) == 0) {
+				fields[4].setText("");
+			} else {
+				fields[4].setText(Integer.toString(rs.getInt(4)));
+			}
+			fields[5].setText(Integer.toString(rs.getInt(5)));
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+	}
 }

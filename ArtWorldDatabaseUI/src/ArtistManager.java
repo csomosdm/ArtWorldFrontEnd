@@ -11,6 +11,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 
 public class ArtistManager {
 	private ArtWorldConnect awc;
@@ -130,11 +131,7 @@ public class ArtistManager {
 				while (rs.next()) {
 					iD = rs.getInt(1);
 				}
-				JPanel panel = frame.getResultPanel();
-				panel.removeAll();
-				JLabel temp = new JLabel("Created Artist Named " + artistName + " with ID " + iD);
-				temp.setFont(UIFrame.ERRORFONT);
-				panel.add(temp);
+				frame.createSuccessMessage("Created Artist Named " + artistName + " with ID " + iD);
 			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
@@ -206,30 +203,125 @@ public class ArtistManager {
 		rp.add(scrollPane);
 	}
 
-	public void updateArtist(String artistID, String name, String birthDate, String deathDate, Object museumID) {
-		if (artistID.length() == 0) {
-			frame.createErrorMessage("ArtistID can not be left empty");
+	public void updateArtist(String artistID, String name, String birthDate, String deathDate, String username) {
+		try {
+			if (artistID.length() == 0) {
+				frame.createErrorMessage("ArtistID is required.");
+				return;
+			} else {
+				Integer.parseInt(artistID);
+			}
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("ArtistID must be a postive integer corresponding to an existing artist.");
 			return;
 		}
-		if (name.length() == 0) {
-			name = null;
-		}
-		System.out.println("artistID: " + artistID + ", Name: " + name + ", BirthDate: " + birthDate + ", DeathDate: " + deathDate);
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{call update_artist(?,?,?,?)}");
+			if (name.length() == 0) {
+				frame.createErrorMessage("ArtistName is required.");
+				return;
+			}
+			if (birthDate.length() == 0) {
+				birthDate = null;
+			}
+			if (deathDate.length() == 0) {
+				deathDate = null;
+			}
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("Artist Birth Date and Death Date must be integers or left empty if unknown.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call update_artist(?,?,?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(artistID));
+			cs.setString(3, name);
+			if (birthDate == null) {
+				cs.setNull(4, Types.INTEGER);
+			} else {
+				cs.setInt(4, Integer.parseInt(birthDate));
+			}
+			if (deathDate == null) {
+				cs.setNull(5, Types.INTEGER);
+			} else {
+				cs.setInt(5, Integer.parseInt(deathDate));
+			}
+			cs.setString(6, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Artist with ID " + artistID + "  and name " + name + " was successfully updated.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
 		}
 	}
 
-	public void deleteArtist(String artistID, String name, Object museumID) {
+	public void deleteArtist(String artistID, String name, String username) {
 		if (artistID.length() == 0 || name.length() == 0) {
-			frame.createErrorMessage("ArtistID and Artist Name are required");
+			frame.createErrorMessage("ArtistID and Artist Name are required.");
 			return;
 		}
-		System.out.println("artistID: " + artistID + ", Name: " + name + ", museumID: " + museumID);
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
+			Integer.parseInt(artistID);
+		} catch (NumberFormatException e) {
+			frame.createErrorMessage("artistID must be a positive integer.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call delete_artist(?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, Integer.parseInt(artistID));
+			cs.setString(3, name);
+			cs.setString(4, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Artist with the name " + name + " was successfully deleted.");
+			}
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	public void fillDefaults(String artistID, String username) {
+		if (artistID.length() == 0) {
+			frame.createErrorMessage("Artist ID is required.");
+			return;
+		} else {
+			try {
+				Integer.parseInt(artistID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Artist ID must be a possitive integer associated with an existing artist.");
+				return;
+			}
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call getArtistValues(?,?)}");
+			cs.setInt(1, Integer.parseInt(artistID));
+			cs.setString(2, username);
+			ResultSet rs = cs.executeQuery();
+			this.fillDefaultsHelper(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+			return;
+		}
+	}
+
+	private void fillDefaultsHelper(ResultSet rs) {
+		JTextField[] fields = frame.getTextFields();
+		try {
+			rs.next();
+			fields[1].setText(rs.getString(1).trim());
+			if (rs.getInt(2) == 0) {
+				fields[2].setText("");
+			} else {
+				fields[2].setText(Integer.toString(rs.getInt(2)));
+			}
+			if (rs.getInt(3) == 0) {
+				fields[3].setText("");
+			} else {
+				fields[3].setText(Integer.toString(rs.getInt(3)));
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
 		}

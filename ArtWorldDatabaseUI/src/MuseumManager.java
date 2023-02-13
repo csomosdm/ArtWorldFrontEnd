@@ -5,11 +5,11 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.awt.Dimension;
-
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.JTextField;
 
 public class MuseumManager {
 	private ArtWorldConnect awc;
@@ -171,11 +171,7 @@ public class MuseumManager {
 				while (rs.next()) {
 					iD = rs.getInt(1);
 				}
-				JPanel panel = frame.getResultPanel();
-				panel.removeAll();
-				JLabel temp = new JLabel("Created Museum Named " + museumName + " with ID " + iD);
-				temp.setFont(UIFrame.ERRORFONT);
-				panel.add(temp);
+				frame.createSuccessMessage("Created Museum Named " + museumName + " with ID " + iD);
 			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
@@ -230,35 +226,80 @@ public class MuseumManager {
 		rp.add(scrollPane);	
 	}
 
-	public void updateMuseum(String name, String cityName, String state, Object museumID) {
-		if (name.length() == 0) {
-			name = null;
-		}
-		if (cityName.length() == 0) {
-			cityName = null;
-		}
-		if (state.length() == 0) {
-			state = null;
-		}
-		System.out.println("Name: " + name + ", cityname: " + cityName + ", State: " + state + ", museumID: " + museumID);
-		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
-		} catch (SQLException e) {
-			frame.createErrorMessage(e.getMessage());
-		}
-	}
-
-	public void deleteMuseum(String name, Object museumID) {
+	public void updateMuseum(String name, String cityName, String state, Object museumID, String username) {
 		if (name.length() == 0) {
 			frame.createErrorMessage("Museum Name is required.");
 			return;
 		}
-		System.out.println("Name: " + name + ", museumID: " + museumID);
+		if (cityName.length() == 0) {
+			frame.createErrorMessage("City Name is required.");
+			return;
+		}
+		if (state.length() == 0) {
+			frame.createErrorMessage("State abbreviation is required.");
+			return;
+		}
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("");
+			CallableStatement cs = awc.getConnection().prepareCall("? = call update_museum(?,?,?,?)");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, (int) museumID);
+			cs.setString(3, name);
+			cs.setString(4, cityName);
+			cs.setString(5, state);
+			cs.setString(6, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Museum with ID " + museumID + " and Name " + name + " was successfully updated.");
+			}
 		} catch (SQLException e) {
 			frame.createErrorMessage(e.getMessage());
 		}
 	}
 
+	public void deleteMuseum(String name, Object museumID, String username) {
+		if (name.length() == 0) {
+			frame.createErrorMessage("Museum Name is required.");
+			return;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call delete_museum(?,?,?)}");
+			cs.registerOutParameter(1, Types.INTEGER);
+			cs.setInt(2, (int) museumID);
+			cs.setString(3, name);
+			cs.setString(4, username);
+			cs.execute();
+			int returnValue = cs.getInt(1);
+			if (returnValue == 0) {
+				frame.createSuccessMessage("Museum with the name " + name + " was successfully deleted.");
+			}
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	public void fillDefaults(Object museumID, String username) {
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call getMuseumValues(?,?)}");
+			cs.setInt(1, (int) museumID);
+			cs.setString(2, username);
+			ResultSet rs = cs.executeQuery();
+			this.fillDefaultsHelper(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	private void fillDefaultsHelper(ResultSet rs) {
+		JTextField[] fields = frame.getTextFields();
+		try {
+			rs.next();
+			fields[0].setText(rs.getString(1).trim());
+			fields[1].setText(rs.getString(2).trim());
+			fields[2].setText(rs.getString(3).trim());
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+	
 }
