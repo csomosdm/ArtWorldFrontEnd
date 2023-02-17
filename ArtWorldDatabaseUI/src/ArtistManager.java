@@ -86,15 +86,22 @@ public class ArtistManager {
 			return;
 		}
 		try {
+			int i = 0, j = 0;
 			if (artistBirthDate.length() == 0) {
 				artistBirthDate = null;
 			} else {
-				Integer.parseInt(artistBirthDate);
+				i = Integer.parseInt(artistBirthDate);
 			}
 			if (artistDeathDate.length() == 0) {
 				artistDeathDate = null;
 			} else {
-				Integer.parseInt(artistDeathDate);
+				j = Integer.parseInt(artistDeathDate);
+			}
+			if (artistBirthDate != null && artistDeathDate != null) {
+				if (i > j) {
+					frame.createErrorMessage("Artist Birth Date must be greater than Artist Death Date.");
+					return;
+				}
 			}
 		} catch (NumberFormatException e) {
 			frame.createErrorMessage("Artist Birth Date and Death Date must be integers or left empty if unknown.");
@@ -220,11 +227,22 @@ public class ArtistManager {
 				frame.createErrorMessage("ArtistName is required.");
 				return;
 			}
+			int i = 0, j = 0;
 			if (birthDate.length() == 0) {
 				birthDate = null;
+			} else {
+				i = Integer.parseInt(birthDate);
 			}
 			if (deathDate.length() == 0) {
 				deathDate = null;
+			} else {
+				j = Integer.parseInt(deathDate);
+			}
+			if (birthDate != null && deathDate != null) {
+				if (j < i) {
+					frame.createErrorMessage("Artist Birth Date must be greater than Artist Death Date.");
+					return;
+				}
 			}
 		} catch (NumberFormatException e) {
 			frame.createErrorMessage("Artist Birth Date and Death Date must be integers or left empty if unknown.");

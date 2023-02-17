@@ -20,58 +20,6 @@ public class MuseumManager {
 		this.frame = frame;
 	}
 
-	public Object[] getMuseums() {
-		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{call FindMuseumNames}");
-			ResultSet rs = cs.executeQuery();
-			return this.parseGetMuseums(rs);
-		} catch (SQLException e) {
-			frame.createErrorMessage(e.getMessage());
-		}
-		return null;
-	}
-	
-	public Object[] getMuseumIDs() {
-		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{call FindMuseumIDs}");
-			ResultSet rs = cs.executeQuery();
-			return this.parseGetMuseumIDs(rs);
-		} catch (SQLException e) {
-			frame.createErrorMessage(e.getMessage());
-		}
-		return null;
-	}
-private Object[] parseGetMuseumIDs(ResultSet rs) {
-		ArrayList<Integer> museumIDs = null;
-		try {
-			museumIDs = new ArrayList<Integer>();
-			int index = 0;
-			while(rs.next() && index < 25) {
-				museumIDs.add(rs.getInt(1));
-				index++;
-			}
-		} catch (SQLException e) {
-			frame.createErrorMessage(e.getMessage());
-		}
-		return museumIDs.toArray();
-	}
-
-
-	private Object[] parseGetMuseums(ResultSet rs) {
-		ArrayList<String> museums = null;
-		try {
-			museums = new ArrayList<String>();
-			int index = 0;
-			while(rs.next() && index < 25) {
-				museums.add(rs.getString("Name"));
-				index++;
-			}
-		} catch (SQLException e) {
-			frame.createErrorMessage(e.getMessage());
-		}
-		return museums.toArray();
-	}
-
 	public void basicSearch(String museumName, String museumCity, String museumState, String artworkName, String artistName, String exhibitName) {
 		if (museumName.length() == 0) {
 			museumName = null;
@@ -139,7 +87,7 @@ public class MuseumManager {
 		rp.add(scrollPane);	
 		}
 
-	public void createMuseum(String museumName, String cityName, String stateName) {
+	public void createMuseum(String museumName, String cityName, String stateName, String username) {
 		if (museumName.length() == 0) {
 			frame.createErrorMessage("Museum Name is required.");
 			return;
@@ -153,11 +101,12 @@ public class MuseumManager {
 			return;
 		}
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{? = call insert_museum(?,?,?)}");
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call insert_museum(?,?,?,?)}");
 			cs.registerOutParameter(1, Types.INTEGER);
 			cs.setString(2, museumName);
 			cs.setString(3, cityName);
 			cs.setString(4, stateName);
+			cs.setString(5, username);
 			cs.execute();
 			int returnValue = cs.getInt(1);
 			if (returnValue == 0) {
@@ -301,5 +250,46 @@ public class MuseumManager {
 			frame.createErrorMessage(e.getMessage());
 		}
 	}
+
+	public Object[][] getMuseumInformation(String username, boolean guest) {
+		if (guest) {
+			Object[][] temp = new Object[3][1];
+			temp[0][0] = "filler";
+			temp[1][0] = 0;
+			temp[2][0] = 1;
+			return temp;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call get_museum_information(?)}");
+			cs.setString(1, username);
+			ResultSet rs = cs.executeQuery();
+			return this.parsegetMuseumInformation(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+		return null;
+	}
 	
+	private Object[][] parsegetMuseumInformation(ResultSet rs) {
+		ArrayList<String> museumNames = null;
+		ArrayList<Integer> museumIDs = null;
+		ArrayList<Integer> museumPermissions = null;
+		try {
+			museumNames = new ArrayList<String>();
+			museumIDs = new ArrayList<Integer>();
+			museumPermissions = new ArrayList<Integer>();
+			while (rs.next()) {
+				museumNames.add(rs.getString(1));
+				museumIDs.add(rs.getInt(2));
+				museumPermissions.add(rs.getInt(3));
+			}
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+		Object[][] temp = new Object[3][museumNames.size()];
+		temp[0] = museumNames.toArray();
+		temp[1] = museumIDs.toArray();
+		temp[2] = museumPermissions.toArray();
+		return temp;
+	}	
 }

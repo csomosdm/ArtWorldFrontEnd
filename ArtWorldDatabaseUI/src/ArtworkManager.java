@@ -94,16 +94,18 @@ public class ArtworkManager {
 		rp.add(scrollPane);
 	}
 
-	public void createArtwork(String artworkName, String artworkMedium, String artworkCategory, String artistID, Object museumID) {
+	public void createArtwork(String artworkName, String artworkMedium, String artworkCategory, String artistID, Object museumID, String username) {
 		if (artworkName.length() == 0) {
 			frame.createErrorMessage("Artwork Name is required.");
 			return;
 		}
-		try {
-			Integer.parseInt(artistID);
-		} catch (NumberFormatException e){
-			frame.createErrorMessage("ArtistID must be a positive integer.");
-			return;
+		if (artistID.length() != 0) {
+			try {
+				Integer.parseInt(artistID);
+			} catch (NumberFormatException e){
+				frame.createErrorMessage("ArtistID must be a positive integer.");
+				return;
+			}
 		}
 		if (artworkMedium.length() == 0) {
 			artworkMedium = null;
@@ -112,7 +114,7 @@ public class ArtworkManager {
 			artworkCategory = null;
 		}
 		try {
-			CallableStatement cs = awc.getConnection().prepareCall("{? = call insert_artwork(?,?,?,?,?)}");
+			CallableStatement cs = awc.getConnection().prepareCall("{? = call insert_artwork(?,?,?,?,?,?)}");
 			cs.registerOutParameter(1, Types.INTEGER);
 			cs.setString(2, artworkName);
 			cs.setString(3, artworkMedium);
@@ -123,6 +125,7 @@ public class ArtworkManager {
 			}
 			cs.setInt(5, (int) museumID);
 			cs.setString(6, artworkCategory);
+			cs.setString(7, username);
 			cs.execute();
 			int returnValue = cs.getInt(1);
 			if (returnValue == 0) {
@@ -360,18 +363,97 @@ public class ArtworkManager {
 	private void fillDefaultsHelper(ResultSet rs) {
 		JTextField[] fields = frame.getTextFields();
 		try {
-			rs.next();
-			fields[1].setText(rs.getString(1).trim());
-			fields[2].setText(rs.getString(2).trim());
-			fields[3].setText(rs.getString(3).trim());
-			if (rs.getInt(4) == 0) {
-				fields[4].setText("");
-			} else {
-				fields[4].setText(Integer.toString(rs.getInt(4)));
+			while (rs.next()) {
+				fields[1].setText(rs.getString(1).trim());
+				if (rs.getString(2) == null) {
+					fields[2].setText("");
+				} else {
+					fields[2].setText(rs.getString(2).trim());
+				}
+				if (rs.getString(3) == null ) {
+					fields[3].setText("");
+				} else {
+					fields[3].setText(rs.getString(3).trim());
+				}
+				if (rs.getInt(4) == 0) {
+					fields[4].setText("");
+				} else {
+					fields[4].setText(Integer.toString(rs.getInt(4)));
+				}
+				fields[5].setText(Integer.toString(rs.getInt(5)));
 			}
-			fields[5].setText(Integer.toString(rs.getInt(5)));
 		} catch (SQLException e) {
-			e.printStackTrace();
+			frame.createErrorMessage(e.getMessage());
 		}
+	}
+
+	public void listArtworkInExhibit(String exhibitID, String artworkName, String artistName, String username) {
+		if (exhibitID.length() == 0) {
+			frame.createErrorMessage("Exhibit ID is required.");
+			return;
+		} else {
+			try {
+				Integer.parseInt(exhibitID);
+			} catch (NumberFormatException e) {
+				frame.createErrorMessage("Exhibit ID must be a positive integer which corresponds to an existing exhibit.");
+				return;
+			}
+		}
+		if (artworkName.length() == 0) {
+			artworkName = null;
+		}
+		if (artistName.length() == 0) {
+			artistName = null;
+		}
+		try {
+			CallableStatement cs = awc.getConnection().prepareCall("{call find_artwork_in_exhibit(?,?,?,?)}");
+			cs.setInt(1, Integer.parseInt(exhibitID));
+			cs.setString(2, artworkName);
+			cs.setString(3, artistName);
+			cs.setString(4, username);
+			ResultSet rs = cs.executeQuery();
+			this.parseListArtworkInExhibit(rs);
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+	}
+
+	private void parseListArtworkInExhibit(ResultSet rs) {
+		ArrayList<String[]> artworks = null;
+		String[] temp = new String[8];
+		System.out.println("should be working");
+		try {
+			artworks = new ArrayList<String[]>();
+			while(rs.next()) {
+				System.out.println("testing");
+				for(int i = 0; i < 8; i++) {
+					if (i == 0) {
+						temp[i] = String.valueOf(rs.getInt(i + 1));
+					} else {
+						temp[i] = rs.getString(i + 1);
+					}
+				}
+				artworks.add(temp);
+				temp = new String[8];
+			}
+		} catch (SQLException e) {
+			frame.createErrorMessage(e.getMessage());
+		}
+		Object[][] data = new Object[artworks.size()][8];
+		for (int i = 0; i < artworks.size(); i++) {
+			for(int j = 0; j < 8; j++) {
+				data[i][j] = artworks.get(i)[j];
+				if (data[i][j] == null) {
+					data[i][j] = "N/A";
+				}
+			}
+		}
+		String[] columnNames = {"Artwork ID", "Artwork Title", "Medium", "Category", "Artist", "Museum", "Active Exhibit", "Exhibit Museum"};
+		JTable table = new JTable(data, columnNames);
+		JScrollPane scrollPane = new JScrollPane(table);
+		scrollPane.setPreferredSize(new Dimension(UIFrame.frameWidth - 25, UIFrame.resultPanelHeight));
+		JPanel rp = frame.getResultPanel();
+		rp.removeAll();
+		rp.add(scrollPane);
 	}
 }

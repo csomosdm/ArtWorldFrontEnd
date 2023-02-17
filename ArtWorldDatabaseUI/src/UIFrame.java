@@ -7,6 +7,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.SwingConstants;
 import java.awt.Color;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
@@ -23,7 +24,7 @@ import java.sql.Types;
 import java.util.ArrayList;
 
 public class UIFrame extends JFrame implements ActionListener {
-	public static final int frameWidth = 1400, frameHeight = 675, queryPanelHeight = 80, otherPanelHeight = 120, resultPanelHeight = 450;
+	public static final int frameWidth = 1400, frameHeight = 675, queryPanelHeight = 80, otherPanelHeight = 80, resultPanelHeight = 450;
 	public static final Font FONT = new Font("TimesRoman", Font.PLAIN,  14);
 	public static final Font ERRORFONT = new Font("TimesRoman", Font.BOLD, 30);
 	private ArtWorldConnect awc;
@@ -31,32 +32,37 @@ public class UIFrame extends JFrame implements ActionListener {
 	private ArtistManager artistManager;
 	private MuseumManager museumManager;
 	private ExhibitManager exhibitManager;
+	private StaffManager staffManager;
 	private JPanel queryPanel, secondPanel, resultPanel;
-	private JComboBox secondBox, thirdBox, museumBox, permissions;
+	private JComboBox secondBox, thirdBox, museumBox, staffRoles;
 	private JTextField[] textFields;
 	private JLabel artworkNameLabel, artworkIDLabel, artworkMediumLabel, artworkCategoryLabel, artistNameLabel, artistIDLabel, artistBirthDateLabel, artistDeathDateLabel, museumIDLabel,
-	museumNameLabel, museumCityLabel, museumStateLabel, exhibitNameLabel, exhibitIDLabel, otherExhibitNameLabel, exhibitCityLabel, exhibitStateLabel, exhibitStartDateLabel, exhibitEndDateLabel;
-	private JLabel museumBoxLabel;
+	museumNameLabel, museumBoxLabel, museumCityLabel, museumStateLabel, exhibitNameLabel, exhibitIDLabel, otherExhibitNameLabel, exhibitCityLabel, exhibitStateLabel, exhibitStartDateLabel, 
+	exhibitEndDateLabel, staffNameLabel, staffUsernameLabel, staffPasswordLabel, staffPositionLabel, permissionLabel;
 	private JButton executeButton, defaultsButton;
 	private int secondBoxIndex, thirdBoxIndex, overallAction, permissionLevel;
-	private Object[] museumIDs;
+	private Object[] museumIDs, permissionLevels;
 	private String[] attributes, manageExhibit;
 	private String username;
+	private JCheckBox filterByRoles, newUser;
+	private boolean update, admin, guest;
 	
-	public UIFrame (ArtWorldConnect awc) {
+	public UIFrame (ArtWorldConnect awc, String username, boolean admin) {
 		this.awc = awc;
 		this.artworkManager = new ArtworkManager(awc, this);
 		this.artistManager = new ArtistManager(awc, this);
 		this.museumManager = new MuseumManager(awc, this);
 		this.exhibitManager = new ExhibitManager(awc, this);
+		this.staffManager = new StaffManager(awc, this);
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		this.setSize(UIFrame.frameWidth, UIFrame.frameHeight);
 		this.setLocationRelativeTo(null);
 		this.setTitle("Art World Front End");
 		this.setLayout(null);
 		this.initializeTextAndLabels();
-		permissionLevel = 1;
-		username = "username";
+		guest = true;
+		update = false;
+		this.admin = admin;
 
 		//query panel
 		queryPanel = new JPanel();
@@ -76,40 +82,92 @@ public class UIFrame extends JFrame implements ActionListener {
 		this.add(queryPanel);
 		this.add(secondPanel);
 		this.add(resultPanel);
+		if (username == null) {
+			this.initializeMuseumInfo();
+			this.setsecondBox(1);
+		} else {
+			this.username = username;
+			guest = false;
+			this.initializeMuseumInfo();
+			permissionLevel = (int) permissionLevels[0];
+			this.setPermissionLabel();
+			this.setsecondBox(permissionLevel);
+			secondBoxIndex = secondBox.getSelectedIndex();
+			this.setThirdBox(secondBoxIndex, permissionLevel);
+			overallAction = calculateAction();
+			this.updateSecondPanel();
+		}
+		//Adds all boxes and labels to the panel
+		queryPanel.add(secondBox);
+		JLabel thirdBoxLabel = new JLabel("     ");
+		queryPanel.add(thirdBoxLabel);
+		queryPanel.add(thirdBox);
+		queryPanel.add(new JLabel("     "));
+		queryPanel.add(executeButton);
 		this.setVisible(true);		
+	}
+
+	private void initializeMuseumInfo() {
+		museumBoxLabel = new JLabel("Current Museum:");
+		museumBoxLabel.setFont(UIFrame.FONT);
+		museumBoxLabel.setForeground(Color.white);
+		Object[][] museumInfo = museumManager.getMuseumInformation(username, guest);
+		if (museumInfo[0].length == 0) {
+			this.setsecondBox(1);
+		} else {
+			museumBox = new JComboBox(museumInfo[0]);
+			museumBox.setFont(UIFrame.FONT);
+			museumBox.addActionListener(this);
+			museumIDs = museumInfo[1];
+			permissionLevels = museumInfo[2];
+			for (int i = 0; i < museumInfo[0].length; i++) {
+//				System.out.println("Museum Name: " + museumInfo[0][i] + " Museum ID: " + museumInfo[1][i] + " Museum Permission Level: " + museumInfo[2][i]);
+			}
+			if (guest) return;
+			queryPanel.add(museumBox);
+			permissionLabel = new JLabel();
+			permissionLabel.setFont(UIFrame.FONT);
+			permissionLabel.setForeground(Color.white);
+			this.setPermissionLabel();
+			queryPanel.add(permissionLabel);
+		}
+//		this.setsecondBox(5);		
+	}
+
+	private void setPermissionLabel() {
+		int i = (int) permissionLevels[museumBox.getSelectedIndex()];
+		System.out.println("permissionLevel: " + i);
+		switch (i) {
+		case (2):
+			permissionLabel.setText("  Role: Exhibit Staff          ");
+			break;
+		case (3):
+			permissionLabel.setText("  Role: General Staff          ");
+			break;
+		case (4):
+			permissionLabel.setText("  Role: Owner          ");
+			break;
+		case (5):
+			permissionLabel.setText("  Role: Admin          ");
+			break;
+		}
 	}
 
 	private void initializeQueryPanel() {
 		//Generate the strings for the JComboBoxs
 		String[] actions = {"Search For", "Staff Search For", "Create",  "Update", "Delete", "Manage Exhibit"};
-		String[] attributes = {"Artwork", "Artist", "Museum", "Exhibit"};
-		Object[] museums = museumManager.getMuseums();
-		museumIDs = museumManager.getMuseumIDs();
+		String[] attributes = {"Artwork", "Artist", "Museum", "Exhibit"};		
 		
 		//Create Action Box and Label
-		JLabel secondBoxLabel = new JLabel("     ");
-		secondBoxLabel.setFont(UIFrame.FONT);
-		secondBoxLabel.setForeground(Color.white);
 		secondBox = new JComboBox(actions);
 		secondBox.setFont(UIFrame.FONT);
 		secondBox.addActionListener(this);
 		secondBoxIndex = 0;
 		
 		//Create Attribute Box and Label
-		JLabel thirdBoxLabel = new JLabel("     ");
-		thirdBoxLabel.setFont(UIFrame.FONT);
-		thirdBoxLabel.setForeground(Color.white);
 		thirdBox = new JComboBox(attributes);
 		thirdBox.setFont(UIFrame.FONT);
 		thirdBox.addActionListener(this);
-		
-		//Create Museum Box and Label
-		museumBoxLabel = new JLabel("Current Museum:");
-		museumBoxLabel.setFont(UIFrame.FONT);
-		museumBoxLabel.setForeground(Color.white);
-		museumBox = new JComboBox(museums);
-		museumBox.setFont(UIFrame.FONT);
-		museumBox.addActionListener(this);
 		
 		//Create Execute Button
 		executeButton = new JButton("Execute");
@@ -120,26 +178,28 @@ public class UIFrame extends JFrame implements ActionListener {
 		defaultsButton.setFont(UIFrame.FONT);
 		defaultsButton.addActionListener(this);
 		
-		//Adds all boxes and labels to the panel
+		newUser = new JCheckBox("Is A New User");
+		newUser.setFont(UIFrame.FONT);
+		newUser.setHorizontalTextPosition(SwingConstants.LEFT);
+		newUser.setBackground(Color.orange);
+		newUser.addActionListener(this);
 		
-		//Used for Testing
-		String[] permissionList = {"1", "2", "3", "4", "5"};
-		permissions = new JComboBox(permissionList);
-		permissions.addActionListener(this);
-		queryPanel.add(permissions);
+		filterByRoles = new JCheckBox("   Filter By Role");
+		filterByRoles.setFont(UIFrame.FONT);
+		filterByRoles.setHorizontalTextPosition(SwingConstants.LEFT);
+		filterByRoles.setBackground(Color.orange);
 		
-		queryPanel.add(secondBoxLabel);
-		queryPanel.add(secondBox);
-		queryPanel.add(thirdBoxLabel);
-		queryPanel.add(thirdBox);
-		queryPanel.add(new JLabel("   "));
-		queryPanel.add(executeButton);
+		String[] positions = {"Exhibit Staff", "General Staff", "Museum Owner"};
+		staffRoles = new JComboBox(positions);
+		staffRoles.setFont(UIFrame.FONT);
 	}
 
 	@Override
 	public void actionPerformed(ActionEvent e) {
-		if (e.getSource() == permissions) {
-			if (permissionLevel != (permissionLevel = permissions.getSelectedIndex() + 1)) {
+		if (e.getSource() == museumBox) {
+			if (permissionLevel != (permissionLevel = (int) permissionLevels[museumBox.getSelectedIndex()])) {
+				System.out.println("Actual Permission Level: " + permissionLevel);
+				this.setPermissionLabel();
 				this.setsecondBox(permissionLevel);
 				secondBoxIndex = secondBox.getSelectedIndex();
 				this.setThirdBox(secondBoxIndex, permissionLevel);
@@ -147,13 +207,13 @@ public class UIFrame extends JFrame implements ActionListener {
 				this.updateSecondPanel();
 			}
 		} else if (e.getSource() == secondBox) {
-			if (permissionLevel != (permissionLevel = permissions.getSelectedIndex() + 1) || secondBoxIndex != (secondBoxIndex = secondBox.getSelectedIndex())) {
+			if (permissionLevel != (permissionLevel = (int) permissionLevels[museumBox.getSelectedIndex()]) || secondBoxIndex != (secondBoxIndex = secondBox.getSelectedIndex())) {
 				this.setThirdBox(secondBoxIndex, permissionLevel);
 				overallAction = calculateAction();
 				this.updateSecondPanel();
 			}
 		} else if (e.getSource() == thirdBox) {
-			if (permissionLevel != (permissionLevel = permissions.getSelectedIndex() + 1) || secondBoxIndex != (secondBoxIndex = secondBox.getSelectedIndex()) || thirdBoxIndex != (thirdBoxIndex = thirdBox.getSelectedIndex())) {
+			if (permissionLevel != (permissionLevel = (int) permissionLevels[museumBox.getSelectedIndex()]) || secondBoxIndex != (secondBoxIndex = secondBox.getSelectedIndex()) || thirdBoxIndex != (thirdBoxIndex = thirdBox.getSelectedIndex())) {
 				overallAction = calculateAction();
 				this.updateSecondPanel();
 			}
@@ -161,6 +221,14 @@ public class UIFrame extends JFrame implements ActionListener {
 			this.executeAction();
 		} else if (e.getSource() == defaultsButton) {
 			this.fillDefaults();
+		} else if (e.getSource() == newUser) {
+			if (newUser.isSelected()) {
+				secondPanel.add(staffPasswordLabel);
+				secondPanel.add(textFields[2]);
+			} else {
+				secondPanel.remove(staffPasswordLabel);
+				secondPanel.remove(textFields[2]);
+			}
 		}
 		this.repaint();
 		this.setVisible(true);
@@ -168,6 +236,10 @@ public class UIFrame extends JFrame implements ActionListener {
 
 	private void setThirdBox(int action, int pLevel) {
 		this.disableActionListeners();
+		if (update) {
+			update = false;
+			queryPanel.remove(defaultsButton);
+		}
 		switch (action) {
 		case (0):
 			boolean[] temp = {true, true, true, true};
@@ -190,6 +262,12 @@ public class UIFrame extends JFrame implements ActionListener {
 			}
 			break;
 		case (3):
+			if (!update) {
+				update = true;
+				queryPanel.remove(executeButton);
+				queryPanel.add(defaultsButton);
+				queryPanel.add(executeButton);
+			}
 			if (pLevel == 2) {
 				boolean[] temp1 = {false, false, false, true};
 				this.setThridBox(temp1);
@@ -218,7 +296,6 @@ public class UIFrame extends JFrame implements ActionListener {
 			thirdBox.addItem("List Artwork");
 			thirdBox.addItem("Add Artwork");
 			thirdBox.addItem("Remove Artwork");
-			System.out.println("Second Box Selected: " + action);
 			break;
 		case (6):
 			thirdBox.removeAllItems();
@@ -228,7 +305,6 @@ public class UIFrame extends JFrame implements ActionListener {
 				thirdBox.addItem("Update Staff");
 				thirdBox.addItem("Remove Staff");
 			}
-			System.out.println("Second Box Selected: " + action);
 			break;
 		default:
 			System.out.println("What the fuck are you doing here");
@@ -305,13 +381,11 @@ public class UIFrame extends JFrame implements ActionListener {
 	}
 
 	private void enableActionListeners() {
-		permissions.addActionListener(this);
 		secondBox.addActionListener(this);
 		thirdBox.addActionListener(this);
 	}
 
 	private void disableActionListeners() {
-		permissions.removeActionListener(this);
 		secondBox.removeActionListener(this);
 		thirdBox.removeActionListener(this);
 	}
@@ -377,6 +451,9 @@ public class UIFrame extends JFrame implements ActionListener {
 		case (33):
 			exhibitManager.fillDefaults(textFields[0].getText(), username);
 			break;
+		case (62):
+			staffManager.fillDefaults(textFields[0].getText(), museumIDs[museumBox.getSelectedIndex()], username);
+			break;
 		default:
 			System.out.println("this code shouldn't run");
 		}
@@ -409,13 +486,13 @@ public class UIFrame extends JFrame implements ActionListener {
 			exhibitManager.staffSearch(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), textFields[3].getText(), museumIDs[museumBox.getSelectedIndex()]);
 			break;
 		case (20):
-			artworkManager.createArtwork(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), textFields[3].getText(), museumIDs[museumBox.getSelectedIndex()]);
+			artworkManager.createArtwork(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), textFields[3].getText(), museumIDs[museumBox.getSelectedIndex()], username);
 			break;
 		case (21): 
 			artistManager.createArtist(textFields[0].getText(), textFields[1].getText(), textFields[2].getText());
 			break;
 		case (22):
-			museumManager.createMuseum(textFields[0].getText(), textFields[1].getText(), textFields[2].getText());
+			museumManager.createMuseum(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), username);
 			break;
 		case (23):
 			exhibitManager.createExhibit(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), museumIDs[museumBox.getSelectedIndex()]);
@@ -443,6 +520,27 @@ public class UIFrame extends JFrame implements ActionListener {
 			break;
 		case (43):
 			exhibitManager.deleteExhibit(textFields[0].getText(), textFields[1].getText(), username);
+			break;
+		case (50):
+			artworkManager.listArtworkInExhibit(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), username);
+			break;
+		case (51):
+			exhibitManager.addArtworkToExhibit(textFields[0].getText(), textFields[1].getText(), username);
+			break;
+		case (52):
+			exhibitManager.removeArtworkFromExhibit(textFields[0].getText(), textFields[1].getText(), username);
+			break;
+		case (60):
+			staffManager.listStaff(textFields[0].getText(), filterByRoles.isSelected(), staffRoles.getSelectedIndex(), username, museumIDs[museumBox.getSelectedIndex()], (admin || ((int) permissionLevels[museumBox.getSelectedIndex()] == 4)));
+			break;
+		case (61):
+			staffManager.addStaff(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), staffRoles.getSelectedIndex(), newUser.isSelected(), museumIDs[museumBox.getSelectedIndex()]);
+			break;
+		case (62):
+			staffManager.updateStaff(textFields[0].getText(), textFields[1].getText(), textFields[2].getText(), staffRoles.getSelectedIndex(), museumIDs[museumBox.getSelectedIndex()]);
+			break;
+		case (63):
+			staffManager.deleteStaff(textFields[0].getText(), textFields[1].getText(), museumIDs[museumBox.getSelectedIndex()]);
 			break;
 		default:
 			System.out.println("execution not yet implemented");
@@ -512,10 +610,115 @@ public class UIFrame extends JFrame implements ActionListener {
 		case (43):
 			this.setDeleteExhibit();
 			break;
+		case (50):
+			this.setListArtworkInExhibit();
+			break;
+		case (51):
+			this.setAddArtworkToExhibit();
+			break;
+		case (52):
+			this.setAddArtworkToExhibit();
+			break;
+		case (60):
+			if (update) {
+				update = false;
+				queryPanel.remove(defaultsButton);
+			}
+			this.setListStaff();
+			break;
+		case (61):
+			if (update) {
+				update = false;
+				queryPanel.remove(defaultsButton);
+			}
+			this.setAddStaff();
+			break;
+		case (62):
+			if (!update) {
+			update = true;
+				queryPanel.remove(executeButton);
+				queryPanel.add(defaultsButton);
+				queryPanel.add(executeButton);
+			}
+			this.setUpdateStaff();
+			break;
+		case (63):
+			if (update) {
+				update = false;
+				queryPanel.remove(defaultsButton);
+			}
+			setRemoveStaff();
+			break;
 		default:
 			System.out.println("OverallAction: " + overallAction);
 		}
 		this.repaint();
+	}
+
+	private void setRemoveStaff() {
+		this.resetTextFields(2);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(staffUsernameLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(staffNameLabel);
+		this.secondPanel.add(textFields[1]);
+	}
+
+	private void setUpdateStaff() {
+		this.resetTextFields(3);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(staffUsernameLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(staffNameLabel);
+		this.secondPanel.add(textFields[1]);
+		this.secondPanel.add(staffPositionLabel);
+		this.secondPanel.add(staffRoles);
+		this.secondPanel.add(staffPasswordLabel);
+		this.secondPanel.add(textFields[2]);
+	}
+
+	private void setAddStaff() {
+		this.resetTextFields(3);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(staffUsernameLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(staffNameLabel);
+		this.secondPanel.add(textFields[1]);
+		this.secondPanel.add(staffPositionLabel);
+		this.secondPanel.add(staffRoles);
+		this.secondPanel.add(newUser);
+//		this.secondPanel.add(staffPasswordLabel);
+//		this.secondPanel.add(textFields[2]);
+	}
+
+	private void setListStaff() {
+		this.resetTextFields(2);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(staffNameLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(filterByRoles);
+		this.secondPanel.add(staffPositionLabel);
+		this.secondPanel.add(staffRoles);
+	}
+
+	private void setAddArtworkToExhibit() {
+		this.resetTextFields(2);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(exhibitIDLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(artworkIDLabel);
+		this.secondPanel.add(textFields[1]);
+	}
+
+	private void setListArtworkInExhibit() {
+		this.resetTextFields(3);
+		this.secondPanel.removeAll();
+		this.secondPanel.add(exhibitIDLabel);
+		this.secondPanel.add(textFields[0]);
+		this.secondPanel.add(artworkNameLabel);
+		this.secondPanel.add(textFields[1]);
+		this.secondPanel.add(artistNameLabel);
+		this.secondPanel.add(textFields[2]);
 	}
 
 	private void setDeleteExhibit() {
@@ -813,6 +1016,14 @@ public class UIFrame extends JFrame implements ActionListener {
 		exhibitStartDateLabel.setFont(UIFrame.FONT);
 		exhibitEndDateLabel = new JLabel("Exhibit End Date (YYYY-MM-DD)");
 		exhibitEndDateLabel.setFont(UIFrame.FONT);
+		staffNameLabel = new JLabel("Staff Name:");
+		staffNameLabel.setFont(UIFrame.FONT);
+		staffUsernameLabel = new JLabel("Staff Username:");
+		staffUsernameLabel.setFont(UIFrame.FONT);
+		staffPasswordLabel = new JLabel("Staff Password:");
+		staffPasswordLabel.setFont(UIFrame.FONT);
+		staffPositionLabel = new JLabel("Staff Role:");
+		staffPositionLabel.setFont(UIFrame.FONT);
 	}
 	
 	private void resetTextFields(int index) {
@@ -838,5 +1049,9 @@ public class UIFrame extends JFrame implements ActionListener {
 
 	public JTextField[] getTextFields() {
 		return textFields;
+	}
+
+	public JComboBox getStaffRolesBox() {
+		return staffRoles;
 	}
 }
